@@ -60,7 +60,7 @@ https://oeis.org/A064731
 #include <time.h>
 #include <omp.h>
 #define NMAX 20
-#define BUFSIZE 1024
+#define BUFSIZE 64
  
 /**  Funkcja eigensymmatrix jest wzorowana na kodzie w języku Pascal A.Marciniaka */
 /** 
@@ -301,7 +301,6 @@ int eigensymmatrix(char * BUFOR)
 */
 int main(int argc, char *argv[])
 {
- 
 #ifdef _OPENMP
     int t = omp_get_max_threads() * 4;
  
@@ -309,57 +308,53 @@ int main(int argc, char *argv[])
         t = atoi(argv[1]);
     }
 
-    char **buf[2];
+    char **buffor[2];
     int counts[2] = {0, 0};
 
     for (int b = 0; b < 2; b++) {
-        buf[b] = (char**)malloc(t * sizeof(char*));
+        buffor[b] = (char**)malloc(t * sizeof(char*));
         for (int i = 0; i < t; i++)
-            buf[b][i] = (char*)malloc(BUFSIZE);
+            buffor[b][i] = (char*)malloc(BUFSIZE);
     }
   
-    int cur = 0;
+    int current = 0;
 
     for (counts[0] = 0; counts[0] < t; counts[0]++) {
-        if (fgets(buf[0][counts[0]], BUFSIZE, stdin) == NULL) 
+        if (fgets(buffor[0][counts[0]], BUFSIZE, stdin) == NULL) 
             break;
     }
   
-    while (counts[cur] > 0) {
-        int next = 1 - cur;         // індекс наступного буфера
-        int compute = cur;          // обробляємо поточний
+    while (counts[current] > 0) {
+        int next = 1 - current;
+        int compute = current;
 
-        // Паралельно: головний потік читає наступний батч,
-        // OpenMP-потоки обробляють поточний
-        #pragma omp parallel default(none) shared(buf, counts, compute, next, t, stdin)
+        #pragma omp parallel default(none) shared(buffor, counts, compute, next, t, stdin)
         {
-            // Один потік читає наступний батч (секція I/O)
             #pragma omp single nowait
             {
                 for (counts[next] = 0; counts[next] < t; counts[next]++) {
-                    if (fgets(buf[next][counts[next]], BUFSIZE, stdin) == NULL)
+                    if (fgets(buffor[next][counts[next]], BUFSIZE, stdin) == NULL)
                         break;
                 }
             }
 
-            // Решта потоків (і той самий після single) — обчислюють
             #pragma omp for schedule(dynamic, 1)
             for (int gid = 0; gid < counts[compute]; gid++) {
-                if (eigensymmatrix(buf[compute][gid])) {
+                if (eigensymmatrix(buffor[compute][gid])) {
                     #pragma omp critical
-                    printf("%s", buf[compute][gid]);
+                    printf("%s", buffor[compute][gid]);
                 }
             }
-        } // кінець паралельної секції — обидва завдання завершені
+        } 
 
-        cur = next; // міняємо буфери місцями
+        current = next;
     }	
   
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < t; i++) {
-            free(buf[b][i]);
+            free(buffor[b][i]);
         }
-        free(buf[b]);
+        free(buffor[b]);
     }
 #else
     char BUFOR[BUFSIZE];

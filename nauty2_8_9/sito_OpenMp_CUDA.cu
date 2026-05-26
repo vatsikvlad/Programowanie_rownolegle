@@ -238,11 +238,9 @@ __global__ void test(char *d_bus, int *d_results, int total_graphs) {
 
 int main(int argc, char *argv[])
 {
-    // Виділяємо пам'ять на CPU під батч
     char *h_batch = (char*)malloc(BATCH_SIZE * GLEN);
     int *h_results = (int*)malloc(BATCH_SIZE * sizeof(int));
 
-    // Виділяємо пам'ять на GPU
     char *d_batch;
     int *d_results;
     cudaMalloc((void**)&d_batch, BATCH_SIZE * GLEN);
