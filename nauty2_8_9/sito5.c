@@ -302,35 +302,35 @@ int eigensymmatrix(char * BUFOR)
 int main(int argc, char *argv[])
 {
 #ifdef _OPENMP
-    int t = omp_get_max_threads() * 4;
+    int t = omp_get_max_threads() * 4; //ustawiamy ile grafów przetwarzamy na raz
  
     if (argc > 1){
         t = atoi(argv[1]);
     }
 
-    char **buffor[2];
-    int counts[2] = {0, 0};
+    char **buffor[2]; //inicjalizujemy dla dwóch buforów
+    int counts[2] = {0, 0}; //lista faktycznej ilości przeczytanych grafów w bufer 0 i 1
 
     for (int b = 0; b < 2; b++) {
-        buffor[b] = (char**)malloc(t * sizeof(char*));
+        buffor[b] = (char**)malloc(t * sizeof(char*)); //przydzielamy t bajtów pamięci które się mieszczą w jednej paczce
         for (int i = 0; i < t; i++)
-            buffor[b][i] = (char*)malloc(BUFSIZE);
+            buffor[b][i] = (char*)malloc(BUFSIZE); // przydzielamu pamięć już dla grafu
     }
   
-    int current = 0;
+    int current = 0; // indeks bufora z którym pracujemy teraz
 
     for (counts[0] = 0; counts[0] < t; counts[0]++) {
-        if (fgets(buffor[0][counts[0]], BUFSIZE, stdin) == NULL) 
+        if (fgets(buffor[0][counts[0]], BUFSIZE, stdin) == NULL) // kopiujemy każdy graf do buforu
             break;
     }
   
     while (counts[current] > 0) {
-        int next = 1 - current;
-        int compute = current;
+        int next = 1 - current; //index następnego bufora
+        int compute = current; //index bufora do wyliczenia
 
-        #pragma omp parallel default(none) shared(buffor, counts, compute, next, t, stdin)
+        #pragma omp parallel default(none) shared(buffor, counts, compute, next, t, stdin)//shared - wspólne zmienne
         {
-            #pragma omp single nowait
+            #pragma omp single nowait //jeden wątek odczytuje i kopiuje grafy do buforu następnego
             {
                 for (counts[next] = 0; counts[next] < t; counts[next]++) {
                     if (fgets(buffor[next][counts[next]], BUFSIZE, stdin) == NULL)
@@ -338,16 +338,16 @@ int main(int argc, char *argv[])
                 }
             }
 
-            #pragma omp for schedule(dynamic, 1)
+            #pragma omp for schedule(dynamic, 1) // inne wątki wykonują obliczenia i single nowait też kiedy się zwolni. Dla jednego wątku - jeden graf
             for (int gid = 0; gid < counts[compute]; gid++) {
-                if (eigensymmatrix(buffor[compute][gid])) {
-                    #pragma omp critical
+                if (eigensymmatrix(buffor[compute][gid])) { //analizujemy graf
+                    #pragma omp critical // jeżeli graf pasuje, to tylko jeden wątek może wypisywać
                     printf("%s", buffor[compute][gid]);
                 }
             }
-        } 
+        }
 
-        current = next;
+        current = next; // zmieniamy indeksy buforów, teraz ten co był do wyliczenia staje buforem do wczytywania i odwrotnie
     }	
   
     for (int b = 0; b < 2; b++) {
@@ -356,7 +356,7 @@ int main(int argc, char *argv[])
         }
         free(buffor[b]);
     }
-#else
+#else // kiedy kompilujemy bez -fopenmp, to zamiast kodu powyżej, będzie wykonany kod poniżej (sekwencyjny)
     char BUFOR[BUFSIZE];
     while (fgets(BUFOR, BUFSIZE, stdin)) { 
         if (eigensymmatrix(BUFOR)) 

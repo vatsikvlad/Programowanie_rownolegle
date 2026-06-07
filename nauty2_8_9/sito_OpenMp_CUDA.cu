@@ -265,17 +265,17 @@ int main(int argc, char *argv[])
             
             cudaMemcpy(h_results, d_results, BATCH_SIZE * sizeof(int), cudaMemcpyDeviceToHost);
 
-            #pragma omp parallel for schedule(static)
+            #pragma omp parallel for schedule(static) // robimy równoległy cykl i dzielimy iteracje na równe bloki między wątkami
             for (int i = 0; i < BATCH_SIZE; i++) {
-                if (h_results[i] == 1) {
-                    char out_buf[GLEN + 2];
-                    __builtin_memcpy(out_buf, &h_batch[i * GLEN], GLEN);
-                    out_buf[GLEN] = '\n';
-                    out_buf[GLEN + 1] = '\0';
+                if (h_results[i] == 1) { //jeżeli znalezliśmy graf to wchodzimy do if
+                    char out_buf[GLEN + 2]; //tworzymy tymczasowy bufor dla wątku
+                    __builtin_memcpy(out_buf, &h_batch[i * GLEN], GLEN); //kopijujemy graf do lokalnego buforu
+                    out_buf[GLEN] = '\n'; // dodajemy na końcu konic linii
+                    out_buf[GLEN + 1] = '\0'; // dodajemy zero aby fputs wiedział, gdzie się kończy wiersz w pamięci
 
-                    #pragma omp critical
+                    #pragma omp critical // Tylko jeden wątek może wywołać poniższą funkcję
                     {
-                        fputs(out_buf, stdout);
+                        fputs(out_buf, stdout); // Wypisujemy znaleziony graf
                     }
                 }
             }
@@ -293,7 +293,7 @@ int main(int argc, char *argv[])
         cudaDeviceSynchronize();
         cudaMemcpy(h_results, d_results, count * sizeof(int), cudaMemcpyDeviceToHost);
 
-        #pragma omp parallel for schedule(static)
+        #pragma omp parallel for schedule(static) //wykonujemy tutaj to samo co i w górze, ale dla pozostałych grafów w pakiecie
         for (int i = 0; i < count; i++) {
             if (h_results[i] == 1) {
                 char out_buf[GLEN + 2];

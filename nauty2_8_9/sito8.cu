@@ -6,18 +6,18 @@
 #include <stdlib.h>
  
 #define NMAX 20
-#define GLEN 21
+#define MAX_GLEN 33
 #define BATCH_SIZE 65536
  
-__global__ void test(char *d_bus, int *d_results, int total_graphs) {
+__global__ void test(char *d_bus, int *d_results, int total_graphs, int glen) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x; //wyliczamy nad jakim grafem będzie pracować ten wątek
     if (idx >= total_graphs) return;
 
-    char buffer[GLEN+1]; 
-    for(int i = 0; i < GLEN; i++) { //kopijujemy do buforu lokalnego bufora graf długością o 21 bit.
-        buffer[i] = d_bus[idx * GLEN + i]; 
+    char buffer[MAX_GLEN + 1]; 
+    for(int i = 0; i < glen; i++) { //kopijujemy do buforu lokalnego bufora graf długością o 21 bit.
+        buffer[i] = d_bus[idx * glen + i]; 
     }
-    buffer[GLEN] = '\0';
+    buffer[glen] = '\0';
  
     int i, j, k, k3, k4, L, L1, z;
     double eps, g, h, ma, mn, norm, s, t, u, w;
@@ -237,66 +237,85 @@ __global__ void test(char *d_bus, int *d_results, int total_graphs) {
 
 int main(int argc, char *argv[])
 {
-    char *h_batch = (char*)malloc(BATCH_SIZE * GLEN); //wydzielamy pamięć dla 65536 grafów na CPU
+    char line[1024];
+
+    if (!fgets(line, sizeof(line), stdin)) { //odczytujemy pierwszy wiersz 
+        return EXIT_FAILURE;
+    }
+
+    int n = line[0] - 63;
+    if (n > NMAX) {
+        fprintf(stderr, "Błąd: %d jest większe od NMAX=%d\n", n, NMAX);
+        return EXIT_FAILURE;
+    }
+
+    int num_edges_bits = n * (n - 1) / 2;
+    int graph6_chars = (num_edges_bits + 5) / 6; 
+    int glen = 1 + graph6_chars;
+
+    char *h_batch = (char*)malloc(BATCH_SIZE * glen); //wydzielamy pamięć dla 65536 grafów na CPU
     int *h_results = (int*)malloc(BATCH_SIZE * sizeof(int)); //tutaj będą się znajdowały wyniki od GPU, gdzie będą tylko jedynki i zera 
 
     char *d_batch;
     int *d_results;
-    cudaMalloc((void**)&d_batch, BATCH_SIZE * GLEN); //miejsce dla grafów, ale które będą się znajdowali na GPU
+    cudaMalloc((void**)&d_batch, BATCH_SIZE * glen); //miejsce dla grafów, ale które będą się znajdowali na GPU
     cudaMalloc((void**)&d_results, BATCH_SIZE * sizeof(int)); //miejsce dla wyników
 
-    char line[1024];
     int count = 0;
 
+    __builtin_memcpy(&h_batch[count * glen], line, glen); 
+    h_results[count] = 0; 
+    count++;
+
     while (fgets(line, sizeof(line), stdin)) {
-        __builtin_memcpy(&h_batch[count * GLEN], line, GLEN); //Kopiujemy pierwszy graf do pamięci RAM pod indexem 0, potem to będzie przesuwało o 20
+        __builtin_memcpy(&h_batch[count * glen], line, glen); //Kopiujemy pierwszy graf do pamięci RAM pod indexem 0, potem to będzie przesuwało o 20
         h_results[count] = 0; //Wpisujemy zero na zerowym indeksie, jeżeli nie znajdziemy pasującego grafu, to tak i zostanie 0 
         count++; //tak jak zapakowaliśmy pierwszy graf, to zwiększamy o jeden
 
         if (count == BATCH_SIZE) { // jak zapakujemy 65536 grafów, to wysyłamy ich na kartę graficzną
-            cudaMemcpy(d_batch, h_batch, BATCH_SIZE * GLEN, cudaMemcpyHostToDevice); //kopiujemy grafy z pamięci RAM do GPU obliczając rozmiar w bajtach i kierunek kopiowania
+            cudaMemcpy(d_batch, h_batch, BATCH_SIZE * glen, cudaMemcpyHostToDevice); //kopiujemy grafy z pamięci RAM do GPU obliczając rozmiar w bajtach i kierunek kopiowania
             cudaMemcpy(d_results, h_results, BATCH_SIZE * sizeof(int), cudaMemcpyHostToDevice); //kopiujemy wyniki z RAM do GPU, tak samo obliczając rozmiar i kierunek 
 
-            int threadsPerBlock = 256;
+            int threadsPerBlock = 32;
             int blocksPerGrid = (BATCH_SIZE + threadsPerBlock - 1) / threadsPerBlock; //obliczamy ile bloków będzie potrzebno stworzyć aby odfiltrować całą paczkę grafów
 
-            test<<<blocksPerGrid, threadsPerBlock>>>(d_batch, d_results, BATCH_SIZE); //wywoływujemy funkcję obliczającą na GPU przekazując argumenty.
+            test<<<blocksPerGrid, threadsPerBlock>>>(d_batch, d_results, BATCH_SIZE, glen); //wywoływujemy funkcję obliczającą na GPU przekazując argumenty.
             
             cudaMemcpy(h_results, d_results, BATCH_SIZE * sizeof(int), cudaMemcpyDeviceToHost); // po obliczeniu pobieramy kopiujemy wyniki z GPU do RAM
 
             for (int i = 0; i < BATCH_SIZE; i++) {
                 if (h_results[i] == 1) {
-                    char out_buf[GLEN + 2];
-                    __builtin_memcpy(out_buf, &h_batch[i * GLEN], GLEN);
-                    out_buf[GLEN] = '\n';
-                    out_buf[GLEN + 1] = '\0';
+                    char out_buf[MAX_GLEN + 2];
+                    __builtin_memcpy(out_buf, &h_batch[i * glen], glen);
+                    out_buf[glen] = '\n';
+                    out_buf[glen + 1] = '\0';
                     fputs(out_buf, stdout);
-                    fflush(stdout);
                 }
             }
+            fflush(stdout);
             count = 0;
         }
     }
 
     if (count > 0) { // jeżeli zostało mniej grafów niż 65536, to wykonujemy ten if
-        cudaMemcpy(d_batch, h_batch, count * GLEN, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_batch, h_batch, count * glen, cudaMemcpyHostToDevice);
         cudaMemcpy(d_results, h_results, count * sizeof(int), cudaMemcpyHostToDevice);
-        int threadsPerBlock = 256;
+        int threadsPerBlock = 32;
         int blocksPerGrid = (count + threadsPerBlock - 1) / threadsPerBlock;
         
-        test<<<blocksPerGrid, threadsPerBlock>>>(d_batch, d_results, count);
+        test<<<blocksPerGrid, threadsPerBlock>>>(d_batch, d_results, count, glen);
         cudaMemcpy(h_results, d_results, count * sizeof(int), cudaMemcpyDeviceToHost);
 
         for (int i = 0; i < count; i++) {
             if (h_results[i] == 1) {
-                char out_buf[GLEN + 2];
-                __builtin_memcpy(out_buf, &h_batch[i * GLEN], GLEN);
-                out_buf[GLEN] = '\n';
-                out_buf[GLEN + 1] = '\0';
+                char out_buf[MAX_GLEN + 2];
+                __builtin_memcpy(out_buf, &h_batch[i * glen], glen);
+                out_buf[glen] = '\n';
+                out_buf[glen + 1] = '\0';
                 fputs(out_buf, stdout);
-                fflush(stdout);
             }
         }
+        fflush(stdout);
     }
 
     cudaFree(d_batch);
