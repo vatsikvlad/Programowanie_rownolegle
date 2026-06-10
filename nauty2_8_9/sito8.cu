@@ -249,9 +249,9 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    int num_edges_bits = n * (n - 1) / 2; //obliczamy ilość krawędzi
-    int graph6_chars = (int)ceil((double)num_edges_bits / 6); //obliczamy ilość symboli i okrąglamy w górę
-    int glen = 1 + graph6_chars; //długość grafu
+    int num_edges_bits = n * (n - 1) / 2; //liczba bitów potrzebna do zapisania krawędzi
+    int graph6_chars = (int)ceil((double)num_edges_bits / 6); //liczba znaków graph6 dla krawędzi
+    int glen = 1 + graph6_chars; //długość grafu w bajtach
 
     char *h_batch = (char*)malloc(BATCH_SIZE * glen); //wydzielamy pamięć dla 65536 grafów na CPU
     int *h_results = (int*)malloc(BATCH_SIZE * sizeof(int)); //tutaj będą się znajdowały wyniki od GPU, gdzie będą tylko jedynki i zera 
