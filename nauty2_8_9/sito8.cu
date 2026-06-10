@@ -243,15 +243,15 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    int n = line[0] - 63;
+    int n = line[0] - 63; //dekodowanie ilości wierzchołków grafu
     if (n > NMAX) {
         fprintf(stderr, "Błąd: %d jest większe od NMAX=%d\n", n, NMAX);
         return EXIT_FAILURE;
     }
 
-    int num_edges_bits = n * (n - 1) / 2;
-    int graph6_chars = (num_edges_bits + 5) / 6; 
-    int glen = 1 + graph6_chars;
+    int num_edges_bits = n * (n - 1) / 2; //obliczamy ilość krawędzi
+    int graph6_chars = (int)ceil((double)num_edges_bits / 6); //obliczamy ilość symboli i okrąglamy w górę
+    int glen = 1 + graph6_chars; //długość grafu
 
     char *h_batch = (char*)malloc(BATCH_SIZE * glen); //wydzielamy pamięć dla 65536 grafów na CPU
     int *h_results = (int*)malloc(BATCH_SIZE * sizeof(int)); //tutaj będą się znajdowały wyniki od GPU, gdzie będą tylko jedynki i zera 
